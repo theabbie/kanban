@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Kanban</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f8f8f6; color: #1a1a1a; min-height: 100vh; }
+    header { background: #fff; border-bottom: 1px solid #e5e5e5; padding: 14px 24px; display: flex; align-items: center; gap: 12px; }
+    header h1 { font-size: 18px; font-weight: 600; }
+    .badge { background: #0a0a0a; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 20px; }
+    .workspace { display: grid; grid-template-columns: 340px 1fr; height: calc(100vh - 53px); }
+    .setup { background: #fff; border-right: 1px solid #e5e5e5; display: flex; flex-direction: column; overflow: hidden; }
+    .setup-header { padding: 16px 20px; border-bottom: 1px solid #f0f0f0; font-weight: 600; font-size: 14px; }
+    .setup-body { padding: 20px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 16px; }
+    .field label { display: block; font-size: 11px; font-weight: 700; color: #888; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .field textarea { width: 100%; padding: 10px 12px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 13px; font-family: inherit; background: #fafafa; color: #1a1a1a; resize: vertical; min-height: 100px; transition: border-color 0.2s; }
+    .field textarea:focus { outline: none; border-color: #0a0a0a; background: #fff; }
+    .run-btn { width: 100%; padding: 12px; background: #0a0a0a; color: #fff; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .run-btn:hover:not(:disabled) { background: #333; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    .run-btn:disabled { background: #ccc; cursor: not-allowed; transform: none; box-shadow: none; }
+    .agents-section { display: flex; flex-direction: column; gap: 8px; }
+    #agents-grid { display: flex; flex-direction: column; gap: 10px; }
+    .agents-label { font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
+    .agent-card { border: 1px solid #e8e8e8; border-radius: 10px; padding: 10px 12px; background: #fafafa; display: flex; align-items: center; gap: 10px; }
+    .agent-avatar { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+    .agent-info { flex: 1; min-width: 0; }
+    .agent-name { font-weight: 600; font-size: 12px; }
+    .agent-role { font-size: 11px; color: #888; }
+    .agent-status { font-size: 10px; padding: 2px 7px; border-radius: 20px; font-weight: 600; margin-top: 4px; display: inline-block; }
+    .s-idle    { background: #f0f0f0; color: #888; }
+    .s-working { background: #fff3cd; color: #856404; }
+    .s-done    { background: #d1fae5; color: #065f46; }
+    .s-error   { background: #fee2e2; color: #991b1b; }
+    .board { display: flex; flex-direction: column; overflow: hidden; }
+    .board-header { padding: 14px 20px; border-bottom: 1px solid #e8e8e8; font-weight: 600; font-size: 14px; background: #fff; display: flex; align-items: center; justify-content: space-between; }
+    .board-cols { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; padding: 18px; overflow-y: auto; flex: 1; align-content: start; }
+    .col { background: #f4f4f2; border-radius: 12px; padding: 12px; }
+    .col-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #888; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+    .col-count { background: #e0e0e0; color: #666; border-radius: 20px; padding: 1px 7px; font-size: 10px; }
+    .task-card { background: #fff; border-radius: 10px; padding: 11px 12px; margin-bottom: 8px; border: 1px solid #e8e8e8; box-shadow: 0 1px 3px rgba(0,0,0,0.04); transition: all 0.3s ease; }
+    .task-card.active { border-color: #fbbf24; box-shadow: 0 0 0 2px rgba(251,191,36,0.2); }
+    .task-card.done   { border-color: #34d399; box-shadow: 0 0 0 2px rgba(52,211,153,0.15); }
+    .task-title { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
+    .task-agent { font-size: 11px; color: #999; }
+    .task-output { font-size: 11px; color: #444; margin-top: 8px; padding-top: 8px; border-top: 1px solid #f0f0f0; line-height: 1.5; max-height: 100px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
+    .task-result { font-size: 11px; color: #444; margin-top: 8px; padding-top: 8px; border-top: 1px solid #f0f0f0; line-height: 1.5; max-height: 100px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
+    .result-section { border-top: 1px solid #e8e8e8; background: #fff; padding: 18px 20px; overflow-y: auto; max-height: 220px; }
+    .result-title { font-size: 12px; font-weight: 700; margin-bottom: 10px; color: #333; }
+    .result-body { font-size: 12px; white-space: pre-wrap; line-height: 1.7; color: #444; background: #fafafa; border-radius: 8px; padding: 12px; border: 1px solid #ebebeb; }
+    .log-panel { border-top: 1px solid #e8e8e8; background: #111; color: #ccc; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; height: 130px; overflow-y: auto; padding: 8px 14px; flex-shrink: 0; }
+    .log-line { line-height: 1.8; }
+    .log-ts   { color: #444; }
+    .log-info { color: #64b5f6; }
+    .log-ok   { color: #81c784; }
+    .log-warn { color: #ffb74d; }
+    .log-err  { color: #e57373; }
+    .spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .hint { font-size: 11px; color: #aaa; line-height: 1.5; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>AI Kanban</h1>
+</header>
+
+<div class="workspace">
+  <div class="setup">
+    <div class="setup-header">Team Setup</div>
+    <div class="setup-body">
+      <div class="field">
+        <label>What do you want to accomplish?</label>
+        <textarea id="user-input" placeholder="e.g. Write a blog post about the future of AI in healthcare"></textarea>
+      </div>
+      <p class="hint">BitNet will plan the agents and tasks automatically based on your description.</p>
+      <button class="run-btn" id="run-btn" onclick="window.runWorkflow()">▶ Start Workflow</button>
+      <div class="agents-section" id="agents-section" style="display:none">
+        <div class="agents-label">Agents</div>
+        <div id="agents-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="board">
+    <div class="board-header">
+      <span>Board</span>
+      <span id="board-status" style="font-size:12px; color:#888; font-weight:400;"></span>
+    </div>
+    <div class="board-cols">
+      <div class="col">
+        <div class="col-title">📋 Todo <span class="col-count" id="cnt-todo">0</span></div>
+        <div id="col-todo"></div>
+      </div>
+      <div class="col">
+        <div class="col-title">⚙️ Doing <span class="col-count" id="cnt-doing">0</span></div>
+        <div id="col-doing"></div>
+      </div>
+      <div class="col">
+        <div class="col-title">✅ Done <span class="col-count" id="cnt-done">0</span></div>
+        <div id="col-done"></div>
+      </div>
+      <div class="col">
+        <div class="col-title">❌ Blocked <span class="col-count" id="cnt-blocked">0</span></div>
+        <div id="col-blocked"></div>
+      </div>
+    </div>
+    <div class="result-section" id="result-section" style="display:none">
+      <div class="result-title">Final Output</div>
+      <div class="result-body" id="result-body"></div>
+    </div>
+    <div class="log-panel" id="log-panel"></div>
+  </div>
+</div>
+
+<script>
+const PROXY = 'https://bitnet-proxy.abbie.workers.dev';
+
+async function callBitNet(messages, label) {
+  window.log('info', label ? `→ ${label}` : `→ BitNet [${messages.length} msgs]`);
+  const res = await fetch(`${PROXY}/completion`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messages,
+      userId: 'kaiban_' + Math.random().toString(36).slice(2),
+      chatId: 'chat_' + Math.random().toString(36).slice(2),
+      device: 'cpu',
+    }),
+  });
+  const data = await res.json();
+  const tokens = data.usage?.completion_tokens || 0;
+  const speed  = data._meta?.speed || 0;
+  const time   = data._meta?.totalTime || 0;
+  window.log('ok', `← ${tokens} tokens @ ${speed.toFixed(1)} tok/s (${time.toFixed(2)}s)`);
+  return data.choices[0].message.content.trim();
+}
+
+function stripFinalAnswerJson(text) {
+  try { const p = JSON.parse(text); if (p.finalAnswer) return p.finalAnswer; } catch {}
+  const m = text.match(/^\s*\{\s*"finalAnswer"\s*:\s*"([\s\S]*)"\s*\}\s*$/);
+  if (m) { try { return JSON.parse('"' + m[1] + '"'); } catch { return m[1]; } }
+  if (text.trimStart().startsWith('{"finalAnswer"') || text.trimStart().startsWith('{\n') && text.includes('"finalAnswer"')) {
+    const start = text.indexOf('"finalAnswer"');
+    if (start !== -1) {
+      const colon = text.indexOf(':', start);
+      const quote = text.indexOf('"', colon + 1);
+      if (quote !== -1) return text.slice(quote + 1).replace(/"\s*\}\s*$/, '').replace(/\\n/g, '\n').replace(/\\"/g, '"');
+    }
+  }
+  return text;
+}
+
+
+window.log = function(type, msg) {
+  const panel = document.getElementById('log-panel');
+  const ts = new Date().toLocaleTimeString('en', {hour12: false});
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML = `<span class="log-ts">${ts}</span> <span class="log-${type}">${msg}</span>`;
+  panel.appendChild(line);
+  panel.scrollTop = panel.scrollHeight;
+};
+</script>
+
+<script type="module">
+const { Agent, Task, Team } = await import('https://esm.sh/kaibanjs@0.24.2?bundle&target=esnext');
+const { StructuredTool } = await import('https://esm.sh/@langchain/core@latest/tools?bundle&target=esnext');
+const { z } = await import('https://esm.sh/zod?bundle&target=esnext');
+log('info', 'Ready.');
+
+class WebSearch extends StructuredTool {
+  name = 'web_search';
+  description = 'Search the web for current information. Use this when you need real-world facts, recent events, or data you are not certain about.';
+  schema = z.object({ query: z.string().describe('The search query') });
+
+  async _call({ query }) {
+    log('info', `  🔍 searching: ${query.slice(0, 80)}`);
+    const res = await fetch('https://bitnet-proxy.abbie.workers.dev/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+    });
+    const data = await res.json();
+    const sources = (data.sources || []).slice(0, 3).map(s => `- ${s.title}: ${s.url}`).join('\n');
+    return `${data.content}\n\nSources:\n${sources}`;
+  }
+}
+
+const AVATARS = ['🧠','🔍','✍️','🔬','📊','🛠️','🎯','📝','🌿','⚡'];
+const COLORS  = ['#ffe4b8','#b8e4ff','#d8f8d8','#f8d8f8','#ffd8d8','#d8ffe4','#fff3d8','#d8f0ff'];
+let taskCards = {};
+
+async function planWorkflow(userGoal) {
+  log('info', 'Planning workflow…');
+  const raw = await callBitNet([{
+    role: 'user',
+    content: `Goal: "${userGoal}"
+
+List the specialists needed to accomplish this goal (between 2 and 6). For each give a first name and their specialty. Example:
+1. Sarah - Researcher
+2. Marco - Analyst
+3. Lisa - Writer
+
+Now list the specialists for the goal above:`
+  }]);
+  log('info', `Planner: ${raw.replace(/\n/g, ' ').slice(0, 120)}`);
+
+  const lines = raw.split('\n').map(l => l.trim()).filter(l => /^\d+[\.\)]/.test(l));
+  const agents = lines.slice(0, 6).map((line, idx) => {
+    const stripped = line.replace(/^\d+[\.\)]\s*(?:Dr|Prof|Mr|Ms|Mrs)\.?\s*/i, '');
+    const m = stripped.match(/^([A-Za-z]+(?:\s+[A-Za-z]+)?)\s*[-:]\s*(.+)/);
+    const name = m ? m[1].trim().split(' ')[0] : `Agent${idx+1}`;
+    const role = m ? m[2].trim().replace(/[.!,]$/, '') : 'Specialist';
+    return { name, role, goal: `Complete the ${role} work for the task`, background: `Experienced ${role}` };
+  });
+  while (agents.length < 2) {
+    agents.push({ name: 'Morgan', role: 'Writer', goal: 'Produce the final output', background: 'Professional writer' });
+  }
+  log('info', `Agents: ${agents.map(a => `${a.name} (${a.role})`).join(', ')}`);
+
+  const tasks = agents.map((a, i) => {
+    const prevRefs = agents.slice(0, i).map((_, j) => `{taskResult:task${j+1}}`).join('\n');
+    const prevContext = i === 0 ? '' : `\n\nPrevious work:\n${prevRefs}`;
+    const isLast = i === agents.length - 1;
+    return {
+      title: a.role,
+      agentIndex: i,
+      description: `Goal: ${userGoal}${prevContext}\n\nYou are ${a.name}, a ${a.role}. ${isLast ? 'Synthesise all previous work and produce the complete final deliverable.' : 'Complete your part thoroughly with detailed output.'}`,
+      expectedOutput: isLast ? 'Complete final deliverable' : `Detailed ${a.role} output`,
+    };
+  });
+  return { agents, tasks };
+}
+
+function renderAgents(agents) {
+  const grid = document.getElementById('agents-grid');
+  document.getElementById('agents-section').style.display = 'block';
+  grid.innerHTML = agents.map((a, i) => `
+    <div class="agent-card" id="agent-${i}">
+      <div class="agent-avatar" style="background:${COLORS[i % COLORS.length]}">${AVATARS[i % AVATARS.length]}</div>
+      <div class="agent-info">
+        <div class="agent-name">${a.name}</div>
+        <div class="agent-role">${a.role}</div>
+        <span class="agent-status s-idle" id="ast-${i}">Idle</span>
+      </div>
+    </div>`).join('');
+}
+
+function initBoard(tasks, agents) {
+  ['todo','doing','done','blocked'].forEach(c => {
+    document.getElementById('col-'+c).innerHTML = '';
+    document.getElementById('cnt-'+c).textContent = '0';
+  });
+  taskCards = {};
+  document.getElementById('result-section').style.display = 'none';
+  tasks.forEach((t, i) => {
+    const card = document.createElement('div');
+    card.className = 'task-card';
+    card.id = 'tc-' + i;
+    card.innerHTML = `<div class="task-title">${t.title}</div><div class="task-agent">${AVATARS[t.agentIndex % AVATARS.length]} ${agents[t.agentIndex].name}</div>`;
+    document.getElementById('col-todo').appendChild(card);
+    taskCards[i] = { el: card, col: 'todo' };
+  });
+  updateCounts();
+}
+
+function moveCard(i, to) {
+  const info = taskCards[i];
+  if (!info || info.col === to) return;
+  document.getElementById('col-'+info.col).removeChild(info.el);
+  document.getElementById('col-'+to).appendChild(info.el);
+  info.col = to;
+  info.el.classList.toggle('active', to === 'doing');
+  info.el.classList.toggle('done',   to === 'done');
+  updateCounts();
+}
+
+function setOutput(i, text) {
+  const card = document.getElementById('tc-'+i);
+  let out = card.querySelector('.task-result');
+  if (!out) { out = document.createElement('div'); out.className = 'task-result'; card.appendChild(out); }
+  out.textContent = text.length > 300 ? text.slice(0, 300) + '…' : text;
+}
+
+function setAgentStatus(i, s) {
+  const el = document.getElementById('ast-'+i);
+  if (!el) return;
+  el.className = 'agent-status s-' + s;
+  el.textContent = s[0].toUpperCase() + s.slice(1);
+}
+
+function updateCounts() {
+  ['todo','doing','done','blocked'].forEach(c => {
+    document.getElementById('cnt-'+c).textContent = document.getElementById('col-'+c).children.length;
+  });
+}
+
+function cleanOutput(raw) {
+  if (!raw) return '';
+  try {
+    let p = JSON.parse(raw);
+    if (typeof p === 'string') p = JSON.parse(p);
+    if (p?.finalAnswer) {
+      let a = p.finalAnswer;
+      try { const inner = JSON.parse(a); if (inner?.finalAnswer) a = inner.finalAnswer; } catch {}
+      return a;
+    }
+  } catch {}
+  return raw.replace(/^#+\s*[\w\s]+output[:\s]*\n+/i, '').replace(/^[\w\s]+output:\s*\n+/i, '');
+}
+
+window.runWorkflow = async function() {
+  const userGoal = document.getElementById('user-input').value.trim();
+  if (!userGoal) { alert('Please describe what you want to accomplish.'); return; }
+
+  const btn = document.getElementById('run-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Planning…';
+  document.getElementById('board-status').textContent = 'Planning…';
+  document.getElementById('agents-section').style.display = 'none';
+
+  const plan = await planWorkflow(userGoal);
+  log('ok', `Plan: ${plan.agents.length} agents, ${plan.tasks.length} tasks`);
+
+  let { agents: agentDefs, tasks: taskDefs } = plan;
+  const usedIndices = new Set(taskDefs.map(t => t.agentIndex ?? 0));
+  const indexRemap = {};
+  agentDefs = agentDefs.filter((_, i) => {
+    if (usedIndices.has(i)) { indexRemap[i] = Object.keys(indexRemap).length; return true; }
+    return false;
+  });
+  taskDefs = taskDefs.map(t => ({ ...t, agentIndex: indexRemap[t.agentIndex ?? 0] ?? 0 }));
+
+  renderAgents(agentDefs);
+  initBoard(taskDefs, agentDefs);
+  btn.innerHTML = '<span class="spinner"></span> Running…';
+  document.getElementById('board-status').textContent = 'Running…';
+
+  const LLM = {
+    provider: 'openai',
+    model: 'bitnet',
+    apiKey: 'no-key',
+    apiBaseUrl: 'https://bitnet-proxy.abbie.workers.dev/v1',
+    configuration: { baseURL: 'https://bitnet-proxy.abbie.workers.dev/v1', apiKey: 'no-key' },
+  };
+
+  const searchTool = new WebSearch();
+  const kjAgents = agentDefs.map(a => new Agent({
+    name: a.name, role: a.role, goal: a.goal, background: a.background,
+    tools: [searchTool], llmConfig: LLM,
+  }));
+
+  const kjTasks = taskDefs.map(td => new Task({
+    description: td.description.replace(/\{input\}/g, userGoal),
+    expectedOutput: td.expectedOutput,
+    agent: kjAgents[td.agentIndex ?? 0],
+  }));
+
+  const team = new Team({
+    name: 'BitNet Team',
+    agents: kjAgents,
+    tasks: kjTasks,
+    inputs: { input: userGoal },
+    env: { OPENAI_API_KEY: 'no-key' },
+  });
+
+  const store = team.useStore();
+  const taskStatus = {};
+  const unsub = store.subscribe(state => {
+    (state.tasks || []).forEach((t, i) => {
+      const ai = taskDefs[i]?.agentIndex ?? 0;
+      if (taskStatus[i] !== t.status) {
+        taskStatus[i] = t.status;
+        if (t.status === 'DOING')   { moveCard(i, 'doing');   setAgentStatus(ai, 'working'); log('info', `Task ${i+1}: "${taskDefs[i]?.title}" → ${agentDefs[ai]?.name}`); }
+        if (t.status === 'DONE')    { moveCard(i, 'done');    setAgentStatus(ai, 'done');    if (t.result) setOutput(i, cleanOutput(t.result)); }
+        if (t.status === 'BLOCKED') { moveCard(i, 'blocked'); setAgentStatus(ai, 'error'); }
+      }
+    });
+    const logs = state.workflowLogs || [];
+    const last = logs.at(-1);
+    if (last?.logType === 'AgentStatusUpdate') {
+      const s = last.agentStatus;
+      const desc = last.logDescription || '';
+      if (s === 'THINKING_START') log('info', `  🤔 ${last.agentName} thinking…`);
+      if (s === 'THOUGHT')        log('info', `  💭 ${desc.replace(/^[^:]+:\s*/,'').slice(0,100)}`);
+      if (s === 'SELF_QUESTION')  log('warn', `  ❓ ${desc.replace(/^[^:]+:\s*/,'').slice(0,100)}`);
+      if (s === 'OBSERVATION')    log('info', `  👁 observation received`);
+      if (s === 'FINAL_ANSWER')   log('ok',   `  ✅ ${last.agentName} final answer ready`);
+    }
+  });
+
+  let finalOutput = '';
+  try {
+    await team.start();
+    unsub();
+    const state = store.getState();
+    (state.tasks || []).forEach((t, i) => {
+      const out = cleanOutput(t.result || '');
+      setOutput(i, out);
+      finalOutput = out;
+    });
+    if (finalOutput) {
+      document.getElementById('result-section').style.display = 'block';
+      document.getElementById('result-body').textContent = finalOutput;
+    }
+    document.getElementById('board-status').textContent = 'Completed ✓';
+    log('ok', 'Workflow complete ✓');
+  } catch (err) {
+    unsub();
+    log('err', 'Workflow error: ' + err.message);
+    document.getElementById('board-status').textContent = 'Error';
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '▶ Start Workflow';
+};
+
+log('info', 'Kaiban × BitNet ready.');
+</script>
+
+</body>
+</html>
